@@ -2,29 +2,35 @@ package main
 
 import (
 	"fmt"
-	"net"
+	"sync"
 )
 
-func main() {
-	// For testing, scan the first 1024 ports
-	for i := 1; i <= 1024; i++ {
-		// Want to do it faster? Wrap it in a go routine.
-		go func(j int) {
-			// Get this iteration's address
-			address := fmt.Sprintf("scanme.nmap.org:%d", j)
-			
-			// Establish the connection
-			conn, err := net.Dial("tcp", address)
-
-			// Handle errors
-			if err != nil {
-				// If we can't access the port, because it's either closed or filtered
-				return
-			}
-
-			// Close the connection once it's done to be good internet neighbors
-			conn.Close()
-			fmt.Printf("%d is open\n", j)
-		}(i) 
+// Creates a worker pool with a wait group
+func worker(ports chan int, wg *sync.WaitGroup) {
+	// Keep receiving work from the ports channel
+	for port := range ports {
+		fmt.Println(port)
+		wg.Done()
 	}
+}
+
+func main() {
+	// Create a channel, and give it a buffer of 100 items. This allows workers to start immediately
+	ports := make(chan int, 100)
+	// Create the wait group
+	var wg sync.WaitGroup
+
+	// Start up the workers
+	for i := 0; i < cap(ports); i++ {
+		go worker(ports, &wg)
+	}
+
+	// Send a port to a worker in the ports channel
+	for i := 1; i <= 1024; i++ {
+		wg.Add(1)
+		ports <- i
+	}
+	// Wait until the program is finished, then close all open connections
+	wg.Wait()
+	close(ports)
 }
